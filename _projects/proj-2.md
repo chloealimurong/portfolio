@@ -1,6 +1,6 @@
 ---
 layout: post
-title: 'Project Two'
+title: 'New Hampshire Health and Air Quality - NASA DEVELOP'
 thumbnail: /assets/img/projects/proj-2/thumbnail.jpg
 ---
 
