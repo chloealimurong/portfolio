@@ -1,6 +1,6 @@
 ---
 layout: post
-title: 'Project Five'
+title: 'Social Mix in East Asia'
 thumbnail: /assets/img/projects/proj-5/thumbnail.jpg
 ---
 
