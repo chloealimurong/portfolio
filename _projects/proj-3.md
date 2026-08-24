@@ -1,6 +1,6 @@
 ---
 layout: post
-title: 'Project Three'
+title: 'Shanghai Virtual Lilong'
 thumbnail: /assets/img/projects/proj-3/thumbnail.jpg
 ---
 
