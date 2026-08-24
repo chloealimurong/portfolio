@@ -1,6 +1,6 @@
 ---
 layout: post
-title: 'Project Four'
+title: 'Geography of DC'
 thumbnail: /assets/img/projects/proj-4/thumbnail.jpg
 ---
 
