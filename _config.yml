@@ -1,5 +1,6 @@
 # Build settings
 
+baseurl: "/portfolio"
 port: 4000
 markdown:  kramdown
 permalink: /:title
