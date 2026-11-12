@@ -1,7 +1,10 @@
 /*
-  Rain background for the portfolio.
-  Streaks fall, then land as rippling ellipses. Some ripples also draw a spiral.
-  Adapted from the rain sketch by u161812 (OpenProcessing 2939960), rewritten
+  Animated background for the portfolio.
+  - Home page: rain. Streaks fall, then land as rippling ellipses, and some ripples draw a spiral.
+    The rain starts as a drizzle and builds the longer you stay.
+  - Every other page: dashed lanes of rectangular blocks that stream across the screen like traffic.
+  - To force a mode on a page, write <canvas id="rain-canvas" data-mode="rain"> or data-mode="blocks".
+  Rain adapted from the sketch by u161812 (OpenProcessing 2939960), rewritten
   in plain canvas so no p5 dependency is needed. Credit the original in your footer.
 */
 (function () {
@@ -12,13 +15,35 @@
   var ctx = canvas.getContext('2d');
   var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  var MAX_DROPS = 28;
-  var SPIRAL_CHANCE = 0.18;
+  // rain on the home page, blocks everywhere else
+  var isHome = /(^|\/)(index\.html)?$/.test(window.location.pathname);
+  var mode = canvas.getAttribute('data-mode') || (isHome ? 'rain' : 'blocks');
+
+  // ---- rain ----
+  var MAX_DROPS = 28;          // drops on screen once the rain is at full strength
+  var START_DROPS = 2;         // drops on screen at the very start
+  var RAMP_SECONDS = 90;       // how long it takes to build from a drizzle to full rain
+  var START_GAP_MS = 900;      // time between new drops at the start
+  var END_GAP_MS = 130;        // time between new drops at full strength
+  var SPIRAL_CHANCE = 0.18;    // chance that a ripple also draws a spiral
+
+  // ---- traffic lanes (every page except home) ----
+  var MAX_LANES = 6;           // most dashed lanes on screen once things are at full strength
+  var START_LANES = 3;         // lanes at the start
+  var LANE_SPEED = [60, 260];  // pixels per second, slowest and fastest
+  var LANE_ALPHA = [0.1, 0.28];
+  var LANE_WIDTH = [5, 16];    // thickness of the blocks, in pixels
+
   var drops = [];
+  var lanes = [];
   var width = 0;
   var height = 0;
-  var frame = 0;
+  var small = false;
   var running = true;
+  var activeMs = 0;            // time spent watching, not counting hidden tabs
+  var lastT = 0;
+  var spawnTimer = 0;
+  var laneTimer = 0, nextLaneIn = 1500;
 
   function rand(a, b) { return a + Math.random() * (b - a); }
 
@@ -26,6 +51,7 @@
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
     width = window.innerWidth;
     height = window.innerHeight;
+    small = width < 600;
     canvas.width = width * dpr;
     canvas.height = height * dpr;
     canvas.style.width = width + 'px';
@@ -33,6 +59,7 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
+  // ---------------- rain ----------------
   function makeDrop() {
     var ex = rand(0.2, 0.55) * Math.min(width, 900);
     return {
@@ -106,6 +133,49 @@
     }
   }
 
+  // ---------------- lanes ----------------
+  // a dashed line of rectangles that streams across the screen, like cars on a road.
+  // each lane has its own mix of long and short blocks, gaps, speed and direction.
+  function makeLane(instant) {
+    var pattern = [];
+    var n = 3 + Math.floor(Math.random() * 3);              // 3 to 5 blocks per repeat
+    for (var i = 0; i < n; i++) {
+      pattern.push(rand(30, 170));                          // a block
+      pattern.push(rand(50, 220));                          // the gap after it
+    }
+    var total = pattern.reduce(function (a, b) { return a + b; }, 0);
+    return {
+      y: rand(0.06, 0.94) * height,
+      w: rand(LANE_WIDTH[0], LANE_WIDTH[1]),
+      v: (Math.random() < 0.5 ? 1 : -1) * rand(LANE_SPEED[0], LANE_SPEED[1]),
+      a: rand(LANE_ALPHA[0], LANE_ALPHA[1]),
+      pattern: pattern,
+      total: total,
+      offset: rand(0, total),
+      fade: instant ? 1 : 0
+    };
+  }
+
+  function drawLane(l) {
+    var a = l.a * l.fade;
+    var g = ctx.createLinearGradient(0, 0, width, 0);        // fade out toward both screen edges
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(0.12, 'rgba(255,255,255,' + a.toFixed(3) + ')');
+    g.addColorStop(0.88, 'rgba(255,255,255,' + a.toFixed(3) + ')');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.strokeStyle = g;
+    ctx.lineWidth = l.w;
+    ctx.lineCap = 'butt';
+    ctx.setLineDash(l.pattern);
+    ctx.lineDashOffset = l.offset;
+    ctx.beginPath();
+    ctx.moveTo(0, l.y);
+    ctx.lineTo(width, l.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // ---------------- main loop ----------------
   function paintBackground() {
     var g = ctx.createLinearGradient(0, 0, 0, height);
     g.addColorStop(0, '#0b4fd6');
@@ -114,23 +184,61 @@
     ctx.fillRect(0, 0, width, height);
   }
 
-  function tick() {
+  function tick(now) {
     if (!running) return;
-    frame += 1;
+    var dt = Math.min(now - (lastT || now), 100);
+    lastT = now;
+    activeMs += dt;
+    spawnTimer += dt;
+    laneTimer += dt;
+
+    // 0 to 1, eased so the build-up is gentle at first
+    var k = Math.min(1, activeMs / (RAMP_SECONDS * 1000));
+    k = k * k * (3 - 2 * k);
+    var cap = Math.round(START_DROPS + (MAX_DROPS - START_DROPS) * k);
+    var gap = START_GAP_MS + (END_GAP_MS - START_GAP_MS) * k;
+
     paintBackground();
-    drops = drops.filter(update);
-    drops.forEach(draw);
-    if (drops.length < MAX_DROPS && frame % 8 === 0) drops.push(makeDrop());
+
+    if (mode === 'blocks') {
+      for (var i = 0; i < lanes.length; i++) {
+        var l = lanes[i];
+        l.fade = Math.min(1, l.fade + dt / 1500);
+        l.offset = (l.offset - (l.v * dt) / 1000) % l.total;   // negative speed runs the other way
+        if (l.offset < 0) l.offset += l.total;
+        drawLane(l);
+      }
+      var laneCap = Math.round(START_LANES + (MAX_LANES - START_LANES) * k);
+      if (small) laneCap = Math.max(2, Math.round(laneCap / 2));
+      if (lanes.length < laneCap && laneTimer >= nextLaneIn) {
+        lanes.push(makeLane(false));
+        laneTimer = 0;
+        nextLaneIn = rand(2500, 6000);
+      }
+    } else {
+      drops = drops.filter(update);
+      drops.forEach(draw);
+      if (drops.length < cap && spawnTimer >= gap) {
+        spawnTimer = 0;
+        drops.push(makeDrop());
+      }
+    }
+
     requestAnimationFrame(tick);
   }
 
   function still() {
-    // reduced motion: draw one calm frame of rings, no animation
+    // reduced motion: draw one calm frame, no animation
     paintBackground();
-    for (var i = 0; i < 9; i++) {
-      var d = makeDrop();
-      d.life = d.fall + Math.floor(d.vanish * rand(0.2, 0.6));
-      draw(d);
+    var i, d;
+    if (mode === 'blocks') {
+      for (i = 0; i < 4; i++) drawLane(makeLane(true));
+    } else {
+      for (i = 0; i < 9; i++) {
+        d = makeDrop();
+        d.life = d.fall + Math.floor(d.vanish * rand(0.2, 0.6));
+        draw(d);
+      }
     }
   }
 
@@ -141,9 +249,15 @@
   document.addEventListener('visibilitychange', function () {
     if (reduceMotion) return;
     running = !document.hidden;
-    if (running) requestAnimationFrame(tick);
+    if (running) { lastT = 0; requestAnimationFrame(tick); }
   });
 
   resize();
-  if (reduceMotion) still(); else requestAnimationFrame(tick);
+  if (reduceMotion) {
+    still();
+  } else {
+    // on block pages, start with a few lanes already running so the page isn't empty
+    if (mode === 'blocks') for (var s0 = 0; s0 < START_LANES; s0++) lanes.push(makeLane(true));
+    requestAnimationFrame(tick);
+  }
 })();
