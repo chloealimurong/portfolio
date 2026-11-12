@@ -1,7 +1,8 @@
 /*
   Rain background for the portfolio.
   Streaks fall, then land as rippling ellipses. Some ripples also draw a spiral.
-  Adapted from the rain sketch by u161812 (OpenProcessing 2939960).
+  Adapted from the rain sketch by u161812 (OpenProcessing 2939960), rewritten
+  in plain canvas so no p5 dependency is needed. Credit the original in your footer.
 */
 (function () {
   'use strict';
