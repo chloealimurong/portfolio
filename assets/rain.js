@@ -1,12 +1,3 @@
-/*
-  Animated background for the portfolio.
-  - Home page: rain. Streaks fall, then land as rippling ellipses, and some ripples draw a spiral.
-    The rain starts as a drizzle and builds the longer you stay.
-  - Every other page: dashed lanes of rectangular blocks that stream across the screen like traffic.
-  - To force a mode on a page, write <canvas id="rain-canvas" data-mode="rain"> or data-mode="blocks".
-  Rain adapted from the sketch by u161812 (OpenProcessing 2939960), rewritten
-  in plain canvas so no p5 dependency is needed. Credit the original in your footer.
-*/
 (function () {
   'use strict';
 
@@ -25,7 +16,8 @@
   var RAMP_SECONDS = 90;       // how long it takes to build from a drizzle to full rain
   var START_GAP_MS = 900;      // time between new drops at the start
   var END_GAP_MS = 130;        // time between new drops at full strength
-  var SPIRAL_CHANCE = 0.18;    // chance that a ripple also draws a spiral
+  var SPIRAL_CHANCE = 0;       // chance that a ripple also draws a spiral (0 = off)
+  var RINGS = 6;               // concentric rings per ripple
 
   // ---- traffic lanes (every page except home) ----
   var MAX_LANES = 6;           // most dashed lanes on screen once things are at full strength
@@ -57,6 +49,7 @@
     canvas.style.width = width + 'px';
     canvas.style.height = height + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    bakeSky();
   }
 
   // ---------------- rain ----------------
@@ -66,7 +59,7 @@
       x: rand(0.05, 0.95) * width,
       y: rand(0.15, 0.9) * height,
       ex: ex,
-      ey: ex * 0.45,
+      ey: ex * 0.94,
       fall: Math.floor(rand(40, 70)),
       vanish: Math.floor(rand(50, 90)),
       weight: rand(2, 5),
@@ -103,31 +96,77 @@
       var p1 = Math.pow(p0, 3);
       var p2 = Math.pow(p0 + (p0 * 3) / d.fall, 3);
       var drop = height * 0.9;
-      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(d.x, d.y - drop * p1);
-      ctx.lineTo(d.x, d.y - drop * p2);
-      ctx.stroke();
+      var hy = d.y - drop * p1, ty = d.y - drop * p2 - 26;   // head (lower) and tail (higher)
+      // streak: fades in from the tail, blue edge so it shows on the light sky, white core
+      var sg = ctx.createLinearGradient(0, ty, 0, hy);
+      sg.addColorStop(0, 'rgba(40,110,190,0)');
+      sg.addColorStop(1, 'rgba(40,110,190,0.45)');
+      ctx.strokeStyle = sg; ctx.lineWidth = 3; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(d.x, ty); ctx.lineTo(d.x, hy); ctx.stroke();
+      var wg = ctx.createLinearGradient(0, ty, 0, hy);
+      wg.addColorStop(0, 'rgba(255,255,255,0)');
+      wg.addColorStop(1, 'rgba(255,255,255,0.95)');
+      ctx.strokeStyle = wg; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(d.x, ty); ctx.lineTo(d.x, hy); ctx.stroke();
+      ctx.lineCap = 'butt';
     } else {
-      // landed: ellipse expands and fades
+      // landed: a water ripple spreads across the glass and fades
       var p3 = (d.life - d.fall) / d.vanish;
       var p4 = Math.pow(p3, 0.6);
-      var alpha = 1 - p4;
-      ctx.strokeStyle = 'rgba(255,255,255,' + alpha.toFixed(3) + ')';
-      ctx.lineWidth = Math.max(0.4, d.weight * alpha);
+      var a = 1 - p4;
+      var rx = (d.ex * p4) / 2, ry = (d.ey * p4) / 2;
+      if (rx < 1) return;
+
+      // soft lens: the water bulges and catches light toward the bottom
+      var lens = ctx.createRadialGradient(d.x, d.y + ry * 0.35, 0, d.x, d.y, rx);
+      lens.addColorStop(0, 'rgba(255,255,255,' + (0.16 * a).toFixed(3) + ')');
+      lens.addColorStop(0.7, 'rgba(255,255,255,' + (0.05 * a).toFixed(3) + ')');
+      lens.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = lens;
       ctx.beginPath();
-      ctx.ellipse(d.x, d.y, (d.ex * p4) / 2, (d.ey * p4) / 2, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      // a second, thinner ring trails the first
-      if (p4 > 0.25) {
-        ctx.lineWidth = Math.max(0.3, d.weight * alpha * 0.4);
+      ctx.ellipse(d.x, d.y, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // concentric rings, fainter and thinner toward the center
+      for (var k = 0; k < RINGS; k++) {
+        var f = 1 - k / RINGS, lw = Math.max(0.5, d.weight * 0.7 * f * a);
+        // a thin blue line just outside each ring, so the white rings read against the light sky
+        ctx.strokeStyle = 'rgba(40,110,190,' + (a * 0.16 * f).toFixed(3) + ')';
+        ctx.lineWidth = lw;
         ctx.beginPath();
-        ctx.ellipse(d.x, d.y, (d.ex * p4 * 0.7) / 2, (d.ey * p4 * 0.7) / 2, 0, 0, Math.PI * 2);
+        ctx.ellipse(d.x, d.y, rx * f + lw, ry * f + lw, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,' + (a * (0.35 + 0.6 * f)).toFixed(3) + ')';
+        ctx.beginPath();
+        ctx.ellipse(d.x, d.y, rx * f, ry * f, 0, 0, Math.PI * 2);
         ctx.stroke();
       }
+
+      // bright crescent along the bottom of the outer ring
+      ctx.strokeStyle = 'rgba(255,255,255,' + (0.9 * a).toFixed(3) + ')';
+      ctx.lineWidth = Math.max(0.6, d.weight * 1.4 * a);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.ellipse(d.x, d.y, rx * 0.97, ry * 0.97, 0, Math.PI * 0.12, Math.PI * 0.88);
+      ctx.stroke();
+
+      // a faint blue shadow along the top edge gives the ring depth
+      ctx.strokeStyle = 'rgba(30,96,180,' + (0.32 * a).toFixed(3) + ')';
+      ctx.lineWidth = Math.max(0.4, d.weight * 0.7 * a);
+      ctx.beginPath();
+      ctx.ellipse(d.x, d.y, rx * 1.02, ry * 1.02, 0, Math.PI * 1.15, Math.PI * 1.85);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+
+      // small specular glint near the top left
+      ctx.fillStyle = 'rgba(255,255,255,' + (0.55 * a).toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.ellipse(d.x - rx * 0.38, d.y - ry * 0.42, rx * 0.07, ry * 0.035, -0.6, 0, Math.PI * 2);
+      ctx.fill();
+
       if (d.spiral) {
-        ctx.lineWidth = Math.max(0.3, alpha * 1.4);
+        ctx.strokeStyle = 'rgba(255,255,255,' + a.toFixed(3) + ')';
+        ctx.lineWidth = Math.max(0.3, a * 1.4);
         drawSpiral(d, p4);
       }
     }
@@ -176,12 +215,54 @@
   }
 
   // ---------------- main loop ----------------
+  // The sky, clouds and glass "screen" don't move, so they are painted once per resize
+  // onto an offscreen canvas and copied in each frame.
+  var sky = document.createElement('canvas'), skyCtx = sky.getContext('2d');
+  function bakeSky() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    sky.width = width * dpr; sky.height = height * dpr;
+    var c = skyCtx;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // baby-blue sky
+    var g = c.createLinearGradient(0, 0, 0, height);
+    g.addColorStop(0, '#dcefff');
+    g.addColorStop(0.55, '#b3dbf8');
+    g.addColorStop(1, '#93c7f1');
+    c.fillStyle = g;
+    c.fillRect(0, 0, width, height);
+    // soft clouds, kept mostly toward the edges so the middle stays calm
+    var clouds = small ? 4 : 7;
+    for (var i = 0; i < clouds; i++) {
+      var side = Math.random() < 0.5;
+      var cx = side ? rand(-0.05, 0.3) * width : rand(0.7, 1.05) * width;
+      var cy = rand(0.05, 0.95) * height;
+      var size = rand(60, 160) * (small ? 0.6 : 1);
+      for (var j = 0; j < 12; j++) {
+        var px = cx + rand(-1.3, 1.3) * size, py = cy + rand(-0.45, 0.45) * size, r = size * rand(0.35, 0.8);
+        var cg = c.createRadialGradient(px, py, 0, px, py, r);
+        cg.addColorStop(0, 'rgba(255,255,255,0.55)');
+        cg.addColorStop(1, 'rgba(255,255,255,0)');
+        c.fillStyle = cg;
+        c.beginPath(); c.arc(px, py, r, 0, Math.PI * 2); c.fill();
+      }
+    }
+    // the glass screen: a diagonal sheen...
+    var sheen = c.createLinearGradient(0, 0, width, height);
+    sheen.addColorStop(0, 'rgba(255,255,255,0)');
+    sheen.addColorStop(0.35, 'rgba(255,255,255,0.14)');
+    sheen.addColorStop(0.45, 'rgba(255,255,255,0.02)');
+    sheen.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = sheen;
+    c.fillRect(0, 0, width, height);
+    // ...and white, misty edges
+    var vg = c.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.35, width / 2, height / 2, Math.hypot(width, height) * 0.62);
+    vg.addColorStop(0, 'rgba(255,255,255,0)');
+    vg.addColorStop(1, 'rgba(255,255,255,0.7)');
+    c.fillStyle = vg;
+    c.fillRect(0, 0, width, height);
+  }
   function paintBackground() {
-    var g = ctx.createLinearGradient(0, 0, 0, height);
-    g.addColorStop(0, '#0b4fd6');
-    g.addColorStop(1, '#0a2a78');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(sky, 0, 0, width, height);
   }
 
   function tick(now) {
