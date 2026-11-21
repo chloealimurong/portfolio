@@ -230,20 +230,35 @@
     g.addColorStop(1, '#93c7f1');
     c.fillStyle = g;
     c.fillRect(0, 0, width, height);
-    // soft clouds, kept mostly toward the edges so the middle stays calm
+    // clouds made of same-size dots, kept mostly toward the edges so the middle stays calm
+    var DOT_R = small ? 2 : 2.6;          // every dot in every cloud is this radius
+    var DOT_GAP = DOT_R * 3.2;            // spacing of the dot grid
     var clouds = small ? 4 : 7;
+    c.fillStyle = 'rgba(255,255,255,0.75)';
     for (var i = 0; i < clouds; i++) {
       var side = Math.random() < 0.5;
       var cx = side ? rand(-0.05, 0.3) * width : rand(0.7, 1.05) * width;
       var cy = rand(0.05, 0.95) * height;
       var size = rand(60, 160) * (small ? 0.6 : 1);
-      for (var j = 0; j < 12; j++) {
-        var px = cx + rand(-1.3, 1.3) * size, py = cy + rand(-0.45, 0.45) * size, r = size * rand(0.35, 0.8);
-        var cg = c.createRadialGradient(px, py, 0, px, py, r);
-        cg.addColorStop(0, 'rgba(255,255,255,0.55)');
-        cg.addColorStop(1, 'rgba(255,255,255,0)');
-        c.fillStyle = cg;
-        c.beginPath(); c.arc(px, py, r, 0, Math.PI * 2); c.fill();
+      // a cloud is a few overlapping round "puffs"; a dot is drawn wherever it falls inside one
+      var puffs = [];
+      for (var j = 0; j < 6; j++) {
+        puffs.push({ x: cx + rand(-1.2, 1.2) * size, y: cy + rand(-0.35, 0.35) * size, r: size * rand(0.4, 0.75) });
+      }
+      var x0 = cx - 2.2 * size, x1 = cx + 2.2 * size, y0 = cy - 1.3 * size, y1 = cy + 1.3 * size;
+      for (var y = Math.floor(y0 / DOT_GAP) * DOT_GAP; y < y1; y += DOT_GAP) {
+        for (var x = Math.floor(x0 / DOT_GAP) * DOT_GAP; x < x1; x += DOT_GAP) {
+          // how deep inside the cloud this point is: 1 at a puff's center, 0 at its edge
+          var depth = 0;
+          for (var k = 0; k < puffs.length; k++) {
+            var pf = puffs[k], dd = Math.hypot(x - pf.x, y - pf.y) / pf.r;
+            if (dd < 1) depth = Math.max(depth, 1 - dd);
+          }
+          // solid in the middle, thinning out toward the edges
+          if (depth > 0 && Math.random() < Math.min(1, depth * 2.5)) {
+            c.beginPath(); c.arc(x, y, DOT_R, 0, Math.PI * 2); c.fill();
+          }
+        }
       }
     }
     // the glass screen: a diagonal sheen...
